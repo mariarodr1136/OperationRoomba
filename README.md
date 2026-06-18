@@ -9,15 +9,22 @@ Every room is procedurally generated with randomized dirt clusters, furniture, l
 ---
 
 ### Table of Contents
+- [Live Demo](#live-demo)
 - [Features](#features)
 - [Code Structure](#code-structure)
 - [Architecture Overview](#architecture-overview)
 - [How to Play](#how-to-play)
 - [Levels](#levels)
-- [Difficulty](#difficulty)
 - [Installation](#installation)
+- [Deploy to Render](#deploy-to-render)
 - [Contributing](#contributing)
 - [Contact](#contact)
+
+---
+
+### Live Demo
+
+[Play on Render →](https://operation-roomba.onrender.com)
 
 ---
 
@@ -28,13 +35,12 @@ Every room is procedurally generated with randomized dirt clusters, furniture, l
 - **Noise meter** — collisions, cat hisses, dogs, and baby monitors all raise noise. Hit 100% and the owner wakes with a live countdown timer.
 - **Battery system** — drains while moving; return to the glowing dock to recharge with animated charging sparks.
 - **Combo multiplier** — consecutive dirty-cell cleans stack up to an 8× score multiplier.
-- **Three lives per level** — lost to legos, cats, and dogs; losing all ends the run.
-- **Star ratings** — earn 1–3 stars per level based on clean percentage and time remaining.
+- **Three lives per level** — lost to legos, cats, and dogs; losing all three ends the run.
 - **High score** — best score is persisted across sessions via `localStorage`.
 
 **Obstacles & Hazards**
 - **Legos** — hidden on the floor; stepping on one costs a life and spikes the noise meter.
-- **Socks** — snag the Roomba and stun it for 2 seconds.
+- **Socks** — snag the Roomba and stun it for 3 seconds.
 - **Cats** — sleeping until disturbed; they wake, hiss, chase you, and actively re-dirty cleaned tiles as they run.
 - **Dogs** — always awake, always moving, always hostile.
 - **Baby monitors** — raise the noise meter passively while you're within range.
@@ -44,9 +50,15 @@ Every room is procedurally generated with randomized dirt clusters, furniture, l
 - **M (Mega)** — doubles the Roomba's cleaning radius for 6 seconds.
 - **H (Hush)** — muffles noise build-up and actively lowers the meter for 8 seconds.
 
+**Pause Menu**
+- Pause at any time with `P`, `Escape`, or `Space`.
+- **Quit to Title** button in the pause overlay — opens a confirmation dialog before abandoning your run.
+- Hover effects and cursor change on all interactive pause buttons.
+- Distinct sound effects for pausing, resuming, opening the quit dialog, confirming, and cancelling.
+
 **HUD & UI**
-- **Full-width progress bar** — pill-shaped bar across the top with a dashed 80% goal marker and live percentage readout.
-- **Minimap** — appears on large levels, showing cleaned vs. dirty tiles and your current position.
+- **Segmented progress bar** — spans the top with a dashed 80% goal marker and live percentage readout.
+- **Minimap** — appears on large levels, showing cleaned vs. dirty tiles and your current viewport.
 - **Active-effect timers** — on-screen labels show remaining seconds for Boost, Mega, and Hush.
 - **Dock arrow** — directional indicator appears when battery is low and the dock is off-screen.
 - **Owner warning overlay** — red tint and flashing countdown when the owner is waking up.
@@ -55,6 +67,7 @@ Every room is procedurally generated with randomized dirt clusters, furniture, l
 **Audio**
 - Fully synthesized sound effects via the Web Audio API — no audio files.
 - Hum while moving, lego crunch, sock slurp, cat hiss, dog bark, baby monitor beep, charging ticks, combo chimes, alarm, and level-up fanfare.
+- Pause / resume chimes and menu interaction sounds.
 - Global mute toggle (`M` key or on-screen button).
 
 ---
@@ -63,7 +76,8 @@ Every room is procedurally generated with randomized dirt clusters, furniture, l
 
 ```
 OperationRoomba/
-└── index.html          # Entire game — markup, styles, and all JavaScript in one file
+├── index.html      # Entire game — markup, styles, and all JavaScript in one file
+└── render.yaml     # Render static site deployment config
 ```
 
 The JavaScript inside `index.html` is organized into self-contained sections:
@@ -76,7 +90,7 @@ index.html
 ├── Game state          # Global variables (score, battery, noise, lives, timers)
 ├── Camera              # Viewport scroll and zoom logic
 ├── Roomba              # Player object and movement constants
-├── Input               # Keyboard events, touch D-pad, mouse tracking
+├── Input               # Keyboard, touch D-pad, mouse tracking, pause menu interaction
 ├── Spawn helpers       # Procedural placement of furniture and obstacles
 ├── Game flow           # startLevel, startGame, nextLevel, shake, popup, burst
 ├── Collision           # Circle-point, circle-circle, circle-rect, furniture resolution
@@ -90,8 +104,8 @@ index.html
 
 ### Architecture Overview
 
-- **Game loop** — a single `requestAnimationFrame` loop calls `update()` then `draw()` every frame at 60 fps.
-- **Grid system** — the map is divided into 20×20px cells stored in flat `Uint8Array` buffers (`dirty`, `cleaned`). A secondary offscreen canvas (`mmCanvas`) maintains the minimap pixel-by-pixel as cells are cleaned.
+- **Game loop** — a single `requestAnimationFrame` loop calls `update()` then `draw()` every frame at ~60 fps.
+- **Grid system** — the map is divided into 20×20 px cells stored in flat `Uint8Array` buffers (`dirty`, `cleaned`). A secondary offscreen canvas (`mmCanvas`) maintains the minimap pixel-by-pixel as cells are cleaned.
 - **Camera** — the world is rendered at 1.8× zoom with a scrolling camera that clamps to map bounds. All world-space drawing happens inside a `ctx.scale` + `ctx.translate` block; HUD elements are drawn afterwards in screen space.
 - **Darkness** — a radial gradient overlay drawn in screen space creates the flashlight effect, with the inner radius expanding for Mega and Boost power-ups.
 - **Procedural generation** — dirt is placed in random Gaussian clusters; furniture, obstacles, and power-ups are placed with a minimum-distance rejection-sampling algorithm so nothing spawns on top of the player start or dock.
@@ -109,9 +123,9 @@ Clean **80% of the dirt** in each room before the timer hits zero.
 | Input | Action |
 |-------|--------|
 | `WASD` / Arrow keys | Move |
-| `P` / `Escape` | Pause |
-| `M` | Toggle mute |
+| `P` / `Escape` | Pause / resume |
 | `Space` / `Enter` | Confirm / advance screen |
+| `M` | Toggle mute |
 
 Touch devices show an on-screen D-pad automatically.
 
@@ -120,8 +134,8 @@ Touch devices show an on-screen D-pad automatically.
 | Obstacle | Effect |
 |----------|--------|
 | **Lego** | Costs a life, spikes the noise meter |
-| **Sock** | Stuns the Roomba for 2 seconds |
-| **Cat** | Wakes, chases you, and re-dirties cleaned tiles |
+| **Sock** | Stuns the Roomba for 3 seconds |
+| **Cat** | Wakes, hisses, chases you, and re-dirties cleaned tiles |
 | **Dog** | Wanders constantly — always hostile |
 | **Baby monitor** | Passively raises noise while you're within range |
 
@@ -136,7 +150,7 @@ Touch devices show an on-screen D-pad automatically.
 **Mechanics**
 
 - **Battery** — drains while moving, recharges at the glowing dock. A directional arrow appears on-screen when battery is low and the dock is off-camera.
-- **Noise meter** — fills from legos, cats, dogs, and baby monitors. Hush power-up actively drains it. At 100% the owner begins waking — you have a limited countdown before game over.
+- **Noise meter** — fills from legos, cats, dogs, and baby monitors. At 100% the owner begins waking — you have a short countdown before game over.
 - **Combo** — cleaning consecutive dirty cells builds a multiplier (up to 8×). It resets if you stop moving.
 - **Lives** — 3 lives per level. Legos, cats, and dogs each cost one.
 
@@ -144,33 +158,13 @@ Touch devices show an on-screen D-pad automatically.
 
 ### Levels
 
-| # | Room | Size | Highlights |
-|---|------|------|------------|
-| 1 | The Kitchen | 560 × 380 | Intro size — no cats or dogs |
-| 2 | The Living Room | 940 × 620 | First cat and baby monitor appear |
-| 3 | The Hallway | 1500 × 960 | Long corridors, dogs join the chaos |
-| 4 | The Bedroom | 2100 × 1340 | Multiple cats, dogs, and monitors |
-| 5 | The Whole House | 2900 × 1860 | Maximum chaos — minimap essential |
-
----
-
-### Difficulty
-
-Select at the start screen. Affects time limit, lego count, and owner patience.
-
-| Mode | Time | Legos | Owner patience |
-|------|------|-------|----------------|
-| **Easy** | +40% | −40% | 5 seconds to escape |
-| **Normal** | Base | Base | 3 seconds to escape |
-| **Hard** | −30% | +50% | 2 seconds to escape |
-
-Best score is saved locally across sessions.
-
-**Star ratings** per level:
-
-- ⭐ — cleaned 80%+ dirt (level complete)
-- ⭐⭐ — cleaned 85%+ dirt
-- ⭐⭐⭐ — cleaned 95%+ dirt with at least 35% time remaining
+| # | Room | Map size | Legos | Cats | Dogs |
+|---|------|----------|-------|------|------|
+| 1 | The Kitchen | 900 × 600 | 20 | 1 | 1 |
+| 2 | The Living Room | 1500 × 980 | 38 | 2 | 2 |
+| 3 | The Hallway | 2400 × 1540 | 64 | 3 | 3 |
+| 4 | The Bedroom | 3300 × 2100 | 100 | 5 | 4 |
+| 5 | The Whole House | 4500 × 2900 | 150 | 7 | 6 |
 
 ---
 
@@ -189,7 +183,29 @@ Best score is saved locally across sessions.
    ```bash
    open OperationRoomba/index.html
    ```
-   Or simply double-click `index.html` in any file manager. No server, no build step, no dependencies.
+   Or double-click `index.html` in any file manager. No server, no build step, no dependencies.
+
+---
+
+### Deploy to Render
+
+Operation Roomba is a single static HTML file — no build step needed.
+
+1. Push the repository to GitHub (it must be public, or connected to Render with repo access).
+
+2. Go to [render.com](https://render.com) and sign in.
+
+3. Click **New → Static Site**.
+
+4. Connect your GitHub account and select the `OperationRoomba` repository.
+
+5. Render will auto-detect `render.yaml` and pre-fill the settings:
+   - **Build command**: *(leave blank)*
+   - **Publish directory**: `.`
+
+6. Click **Deploy Static Site**. Render will deploy in under a minute and give you a live URL.
+
+The free tier is sufficient — static sites on Render are free with no cold-start delay.
 
 ---
 
