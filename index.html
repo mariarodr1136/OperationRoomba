@@ -962,7 +962,9 @@ function drawRoomba() {
 // ── Screen-space draw ─────────────────────────────────────────────────────────
 function drawDarkness() {
   const sx=(roomba.x-camX)*ZOOM, sy=(roomba.y-camY)*ZOOM;
-  const lightR=(activeMega>0?240:activeBoost>0?220:130+Math.sin(frame*0.03)*4)*ZOOM;
+  const battFrac=battery/100;
+  const baseR=activeMega>0?240:activeBoost>0?220:Math.max(22,28+battFrac*192+Math.sin(frame*0.03)*(3+(1-battFrac)*18));
+  const lightR=baseR*ZOOM;
   const g1=ctx.createRadialGradient(sx,sy,R+8,sx,sy,lightR);
   g1.addColorStop(0,'rgba(0,0,0,0)');
   g1.addColorStop(0.5,'rgba(0,0,12,0.18)');
