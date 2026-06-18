@@ -16,7 +16,6 @@ Every room is procedurally generated with randomized dirt clusters, furniture, l
 - [How to Play](#how-to-play)
 - [Levels](#levels)
 - [Installation](#installation)
-- [Deploy to Render](#deploy-to-render)
 - [Contributing](#contributing)
 - [Contact](#contact)
 
@@ -184,28 +183,6 @@ Touch devices show an on-screen D-pad automatically.
    open OperationRoomba/index.html
    ```
    Or double-click `index.html` in any file manager. No server, no build step, no dependencies.
-
----
-
-### Deploy to Render
-
-Operation Roomba is a single static HTML file — no build step needed.
-
-1. Push the repository to GitHub (it must be public, or connected to Render with repo access).
-
-2. Go to [render.com](https://render.com) and sign in.
-
-3. Click **New → Static Site**.
-
-4. Connect your GitHub account and select the `OperationRoomba` repository.
-
-5. Render will auto-detect `render.yaml` and pre-fill the settings:
-   - **Build command**: *(leave blank)*
-   - **Publish directory**: `.`
-
-6. Click **Deploy Static Site**. Render will deploy in under a minute and give you a live URL.
-
-The free tier is sufficient — static sites on Render are free with no cold-start delay.
 
 ---
 
