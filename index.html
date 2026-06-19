@@ -159,7 +159,6 @@ let quitConfirm = false;
 let _quitBtnRect = null, _confirmYesRect = null, _confirmNoRect = null;
 let mouseX = -1, mouseY = -1;
 let highScore = parseInt(localStorage.getItem('roomba_hs') || '0');
-let levelHighScores = JSON.parse(localStorage.getItem('roomba_lhs') || '{}');
 let muteBtnX = 0;
 let lives = 3, frame = 0, timeLeft = 0, humTimer = 0;
 let score = 0, combo = 1, comboTimer = 0;
@@ -172,8 +171,6 @@ let cordStuckVx = 0, cordStuckVy = 0;
 let swipeOrigin = null;
 
 function saveHighScore() {
-  const k=String(currentLevel);
-  if (!levelHighScores[k]||score>levelHighScores[k]) { levelHighScores[k]=score; localStorage.setItem('roomba_lhs',JSON.stringify(levelHighScores)); }
   if (score>highScore) { highScore=score; localStorage.setItem('roomba_hs',highScore); }
 }
 
@@ -432,7 +429,7 @@ function startLevel() {
   roomba.x=MAP_W/2; roomba.y=MAP_H/2;
   roomba.vx=0; roomba.vy=0; roomba.angle=0;
   roomba.stuckTimer=0; roomba.hitTimer=0; roomba.bumpX=0; roomba.bumpY=0;
-  dust=[]; popups=[]; bursts=[]; cords=[]; cordStuckVx=0; cordStuckVy=0;
+  dust=[]; popups=[]; bursts=[]; cordStuckVx=0; cordStuckVy=0;
   paused=false; quitConfirm=false;
   updateCamera();
   state='playing';
@@ -976,14 +973,13 @@ function drawCords() {
   for (const c of cords) {
     ctx.save(); ctx.translate(c.x,c.y); ctx.rotate(c.angle);
     ctx.lineCap='round'; ctx.lineJoin='round';
-    ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.lineWidth=7;
-    ctx.beginPath(); ctx.moveTo(-36,2); ctx.bezierCurveTo(-20,-13,2,17,17,2); ctx.bezierCurveTo(24,-7,31,-3,36,8); ctx.stroke();
-    ctx.strokeStyle='#a34800'; ctx.lineWidth=6;
-    ctx.beginPath(); ctx.moveTo(-36,2); ctx.bezierCurveTo(-20,-13,2,17,17,2); ctx.bezierCurveTo(24,-7,31,-3,36,8); ctx.stroke();
-    ctx.strokeStyle='#e07030'; ctx.lineWidth=2.5;
-    ctx.beginPath(); ctx.moveTo(-36,2); ctx.bezierCurveTo(-20,-13,2,17,17,2); ctx.bezierCurveTo(24,-7,31,-3,36,8); ctx.stroke();
-    ctx.fillStyle='#6a2e00'; roundRect(31,4,14,10,2); ctx.fill();
-    ctx.fillStyle='#111'; ctx.fillRect(34,14,3,5); ctx.fillRect(39,14,3,5);
+    const path=()=>{ ctx.beginPath(); ctx.moveTo(-40,0); ctx.bezierCurveTo(-22,-18,4,22,20,0); ctx.bezierCurveTo(28,-10,36,-4,42,10); };
+    ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=10; path(); ctx.stroke();
+    ctx.strokeStyle='#c85a00'; ctx.lineWidth=8; path(); ctx.stroke();
+    ctx.strokeStyle='#ff8c30'; ctx.lineWidth=3.5; path(); ctx.stroke();
+    ctx.fillStyle='#8a3e00'; roundRect(36,5,16,12,2); ctx.fill();
+    ctx.strokeStyle='#c85a00'; ctx.lineWidth=1.5; roundRect(36,5,16,12,2); ctx.stroke();
+    ctx.fillStyle='#111'; ctx.fillRect(39,17,3,6); ctx.fillRect(46,17,3,6);
     ctx.restore();
   }
 }
@@ -1194,14 +1190,6 @@ function drawHUD() {
   ctx.textAlign='left';
   ctx.fillStyle='#6a9ab8'; ctx.font='bold 10px monospace';
   ctx.fillText('SCORE',panX+12,panY+16);
-  const lvBest=levelHighScores[String(currentLevel)]||0;
-  if (lvBest>0) {
-    ctx.textAlign='right'; ctx.fillStyle='#2a4455'; ctx.font='bold 9px monospace';
-    ctx.fillText('LVL BEST',panX+panW-10,panY+16);
-    ctx.fillStyle=score>=lvBest?'#ffd700':'#3a5566'; ctx.font='bold 11px monospace';
-    ctx.fillText(String(lvBest).padStart(6,'0'),panX+panW-10,panY+30);
-    ctx.textAlign='left';
-  }
   ctx.fillStyle='#ffd700'; ctx.font='bold 22px monospace';
   ctx.fillText(String(score).padStart(6,'0'),panX+12,panY+58);
   if (combo>2) {
@@ -1424,13 +1412,10 @@ function drawLevelComplete() {
   ctx.beginPath();ctx.moveTo(W/2-200,H/2+sm*1.8);ctx.lineTo(W/2+200,H/2+sm*1.8);ctx.stroke();
   ctx.fillStyle='#ffd700'; ctx.font=`bold ${sm+2}px monospace`;
   ctx.fillText(`SCORE  ${score.toLocaleString()}`,W/2,H/2+sm*3.5);
-  const lvBestLC=levelHighScores[String(currentLevel)]||0;
-  ctx.fillStyle=score>=lvBestLC&&score>0?'#ffd700':'#3a5566'; ctx.font=`${sm-1}px monospace`;
-  ctx.fillText(`LEVEL BEST: ${Math.max(score,lvBestLC).toLocaleString()}`,W/2,H/2+sm*5.0);
   if(score>=highScore&&score>0){
     ctx.fillStyle=frame%30<15?'#ffd700':'#ffffff';
     ctx.font=`bold ${sm}px monospace`;
-    ctx.fillText('NEW ALL-TIME BEST!',W/2,H/2+sm*6.5);
+    ctx.fillText('NEW BEST!',W/2,H/2+sm*5.2);
   }
   const next=LEVELS[currentLevel+1];
   if(next){
@@ -1496,14 +1481,11 @@ function drawGameOver() {
   const pct=dirtyTotal>0?Math.floor((dirtyClean/dirtyTotal)*100):0;
   ctx.fillStyle='#667788'; ctx.font=`${sm}px monospace`;
   ctx.fillText(`LVL ${currentLevel+1}: ${LEVELS[currentLevel].name}  ·  ${pct}% CLEANED  ·  ${score.toLocaleString()} PTS`,W/2,H/2+sm*2.8);
-  const lvBestGO=levelHighScores[String(currentLevel)]||0;
-  ctx.fillStyle='#3a5566'; ctx.font=`${sm-1}px monospace`;
-  ctx.fillText(`LEVEL BEST: ${lvBestGO>0?lvBestGO.toLocaleString():'--'}`,W/2,H/2+sm*4.3);
   ctx.fillStyle='#ffd700'; ctx.font=`${sm}px monospace`;
-  ctx.fillText(`ALL-TIME BEST: ${highScore.toLocaleString()}`,W/2,H/2+sm*5.8);
+  ctx.fillText(`BEST: ${highScore.toLocaleString()}`,W/2,H/2+sm*4.5);
   if(Math.floor(frame/22)%2===0){
     ctx.fillStyle='#ffffff'; ctx.font=`bold ${sm+2}px monospace`;
-    ctx.fillText('PRESS SPACE TO RETRY',W/2,H/2+sm*7.5);
+    ctx.fillText('PRESS SPACE TO RETRY',W/2,H/2+sm*6.5);
   }
   drawMuteButton();
   drawCRT();
