@@ -31,7 +31,7 @@ const CELL = 20;
 let MAP_W, MAP_H, gCols, gRows;
 let dirty, cleaned;
 let dirtyTotal = 0, dirtyClean = 0;
-let mmCanvas, mmCtx;
+let mmCanvas, mmCtx, crtCanvas = null;
 
 function initGrid() {
   const lv = LEVELS[currentLevel];
@@ -161,7 +161,7 @@ let mouseX = -1, mouseY = -1;
 let highScore = parseInt(localStorage.getItem('roomba_hs') || '0');
 let muteBtnX = 0;
 let lives = 3, frame = 0, timeLeft = 0, humTimer = 0;
-let score = 0, combo = 1, comboTimer = 0;
+let score = 0, carryScore = 0, combo = 1, comboTimer = 0;
 let battery = 100, noise = 0;
 let ownerWarning = false, ownerTimer = 0;
 let shakeX = 0, shakeY = 0, shakeDamp = 0;
@@ -171,7 +171,8 @@ let cordStuckVx = 0, cordStuckVy = 0;
 let swipeOrigin = null;
 
 function saveHighScore() {
-  if (score>highScore) { highScore=score; localStorage.setItem('roomba_hs',highScore); }
+  const total=carryScore+score;
+  if (total>highScore) { highScore=total; localStorage.setItem('roomba_hs',highScore); }
 }
 
 // ── Camera ────────────────────────────────────────────────────────────────────
@@ -230,6 +231,7 @@ canvas.addEventListener('mouseleave', () => { mouseX=-1; mouseY=-1; canvas.style
 window.addEventListener('resize', () => {
   W=window.innerWidth; H=window.innerHeight;
   canvas.width=W; canvas.height=H;
+  crtCanvas=null;
   if (state==='playing') updateCamera();
 });
 
@@ -434,8 +436,8 @@ function startLevel() {
   updateCamera();
   state='playing';
 }
-function startGame() { playStart(); currentLevel=0; startLevel(); }
-function nextLevel()  { currentLevel=Math.min(currentLevel+1,LEVELS.length-1); startLevel(); }
+function startGame() { playStart(); currentLevel=0; carryScore=0; startLevel(); }
+function nextLevel()  { carryScore+=score; currentLevel=Math.min(currentLevel+1,LEVELS.length-1); startLevel(); }
 
 function shake(amt) { shakeX=(Math.random()-.5)*amt*2; shakeY=(Math.random()-.5)*amt*2; shakeDamp=amt; }
 function addPopup(wx,wy,text,color) { popups.push({x:(wx-camX)*ZOOM,y:(wy-camY)*ZOOM,text,color,life:1}); }
@@ -522,8 +524,8 @@ function update() {
   if (dDist<50) {
     if (battery<99.5) { battery=Math.min(100,battery+0.8); if (frame%8===0) playCharge(); }
   }
-  if (battery<30&&moving) {
-    const urgency=Math.max(0,1-battery/30);
+  if (battery<40&&moving) {
+    const urgency=Math.max(0,1-battery/40);
     const interval=Math.max(12,Math.round(65-urgency*53));
     if (frame%interval===0) playLowBattery(urgency);
   }
@@ -1093,13 +1095,18 @@ function drawSegBar(x,y,w,h,pct,col,segs) {
   ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1; ctx.strokeRect(x,y,w,h);
 }
 
-function drawCRT() {
-  ctx.save();
-  for (let y=0;y<H;y+=3) { ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.fillRect(0,y,W,1); }
-  const vg=ctx.createRadialGradient(W/2,H/2,H*0.2,W/2,H/2,H*0.88);
+function buildCRT() {
+  crtCanvas=document.createElement('canvas');
+  crtCanvas.width=W; crtCanvas.height=H;
+  const c=crtCanvas.getContext('2d');
+  for (let y=0;y<H;y+=3) { c.fillStyle='rgba(0,0,0,0.28)'; c.fillRect(0,y,W,1); }
+  const vg=c.createRadialGradient(W/2,H/2,H*0.2,W/2,H/2,H*0.88);
   vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.48)');
-  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
-  ctx.restore();
+  c.fillStyle=vg; c.fillRect(0,0,W,H);
+}
+function drawCRT() {
+  if (!crtCanvas||crtCanvas.width!==W||crtCanvas.height!==H) buildCRT();
+  ctx.drawImage(crtCanvas,0,0);
 }
 
 function drawMuteButton(bx) {
@@ -1191,22 +1198,26 @@ function drawHUD() {
   ctx.fillStyle='#6a9ab8'; ctx.font='bold 10px monospace';
   ctx.fillText('SCORE',panX+12,panY+16);
   ctx.fillStyle='#ffd700'; ctx.font='bold 22px monospace';
-  ctx.fillText(String(score).padStart(6,'0'),panX+12,panY+58);
+  ctx.fillText(String(carryScore+score).padStart(6,'0'),panX+12,panY+58);
   if (combo>2) {
-    ctx.fillStyle=combo>=8?'#ff3344':combo>=5?'#ff8800':'#ffdd44';
+    const cCol=combo>=8?'#ff3344':combo>=5?'#ff8800':'#ffdd44';
+    ctx.fillStyle=cCol;
     ctx.font=`bold ${Math.min(16,9+combo)}px monospace`;
     ctx.fillText(`x${combo} COMBO`,panX+12,panY+76);
+    const cBarW=panW-24, cFrac=comboTimer/90;
+    ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.fillRect(panX+12,panY+79,cBarW,4);
+    ctx.fillStyle=cCol; ctx.fillRect(panX+12,panY+79,Math.floor(cBarW*cFrac),4);
   }
 
   ctx.strokeStyle='rgba(0,255,200,0.08)'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(panX+8,panY+84); ctx.lineTo(panX+panW-8,panY+84); ctx.stroke();
 
   const batPct=battery/100;
-  const batC=battery<20?'#ff3344':battery<50?'#ff8800':'#00ffcc';
+  const batC=battery<30?'#ff3344':battery<60?'#ff8800':'#00ffcc';
   ctx.fillStyle='#6a9ab8'; ctx.font='bold 10px monospace';
   ctx.fillText('BATTERY',panX+12,panY+98);
   ctx.textAlign='right';
-  ctx.fillStyle=battery<20?(frame%20<10?'#ff3344':'#ff8800'):batC;
+  ctx.fillStyle=battery<30?(frame%20<10?'#ff3344':'#ff8800'):batC;
   ctx.font='bold 11px monospace';
   ctx.fillText(`${Math.floor(battery)}%${charging?' +':''}`,panX+panW-10,panY+98);
   ctx.textAlign='left';
@@ -1226,10 +1237,14 @@ function drawHUD() {
   ctx.textAlign='left';
   drawSegBar(panX+12,panY+141,panW-24,12,noisePct,noiseC,14);
 
-  if (noise>80&&!ownerWarning) {
-    ctx.fillStyle=frame%18<9?'#ff3344':'#ff8800';
-    ctx.font='bold 10px monospace'; ctx.textAlign='center';
-    ctx.fillText('STAY QUIET!',panX+panW/2,panY+panH-5);
+  const showQuiet=noise>80&&!ownerWarning, showDock=battery<40&&!charging;
+  if (showQuiet||showDock) {
+    let msg,col;
+    if (showQuiet&&showDock) { const alt=frame%40<20; msg=alt?'STAY QUIET!':'RTN TO DOCK!'; col=alt?(frame%18<9?'#ff3344':'#ff8800'):(frame%18<9?'#ff8800':'#ff4400'); }
+    else if (showQuiet) { msg='STAY QUIET!'; col=frame%18<9?'#ff3344':'#ff8800'; }
+    else { msg='RTN TO DOCK!'; col=frame%18<9?'#ff8800':'#ff4400'; }
+    ctx.fillStyle=col; ctx.font='bold 10px monospace'; ctx.textAlign='center';
+    ctx.fillText(msg,panX+panW/2,panY+panH-5);
   }
 
   // ── BOTTOM-RIGHT: TIMER + LIVES ──────────────────────────────────────────
@@ -1372,7 +1387,7 @@ function drawStartScreen() {
   // Tagline
   const sm=Math.max(11,Math.min(14,W/64));
   ctx.fillStyle='#2a4455'; ctx.font=`${sm}px monospace`;
-  ctx.fillText('5 ROOMS  ·  3 AM  ·  ONE TINY ROBOT  ·  SURVIVE TILL DAWN',W/2,H/2+big*0.42);
+  ctx.fillText('3 ROOMS  ·  3 AM  ·  ONE TINY ROBOT  ·  SURVIVE TILL DAWN',W/2,H/2+big*0.42);
   ctx.fillStyle='#551a1a'; ctx.font=`bold ${sm-1}px monospace`;
   ctx.fillText('WARNING: NOT FOR THE FAINT OF HEART',W/2,H/2+big*0.42+sm*2.4);
   // Press to play
@@ -1411,22 +1426,27 @@ function drawLevelComplete() {
   ctx.strokeStyle='rgba(0,255,200,0.15)'; ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(W/2-200,H/2+sm*1.8);ctx.lineTo(W/2+200,H/2+sm*1.8);ctx.stroke();
   ctx.fillStyle='#ffd700'; ctx.font=`bold ${sm+2}px monospace`;
-  ctx.fillText(`SCORE  ${score.toLocaleString()}`,W/2,H/2+sm*3.5);
-  if(score>=highScore&&score>0){
+  ctx.fillText(`LEVEL SCORE  ${score.toLocaleString()}`,W/2,H/2+sm*3.5);
+  if(carryScore>0){
+    ctx.fillStyle='#aaccff'; ctx.font=`${sm}px monospace`;
+    ctx.fillText(`RUN TOTAL  ${(carryScore+score).toLocaleString()}`,W/2,H/2+sm*5.0);
+  }
+  const runTotal=carryScore+score;
+  if(runTotal>=highScore&&runTotal>0){
     ctx.fillStyle=frame%30<15?'#ffd700':'#ffffff';
     ctx.font=`bold ${sm}px monospace`;
-    ctx.fillText('NEW BEST!',W/2,H/2+sm*5.2);
+    ctx.fillText('NEW BEST!',W/2,H/2+sm*(carryScore>0?6.5:5.2));
   }
   const next=LEVELS[currentLevel+1];
   if(next){
     ctx.fillStyle='#88aacc'; ctx.font=`bold ${sm}px monospace`;
-    ctx.fillText(`NEXT:  LVL ${currentLevel+2}  —  ${next.name}`,W/2,H/2+sm*6.8);
+    ctx.fillText(`NEXT:  LVL ${currentLevel+2}  —  ${next.name}`,W/2,H/2+sm*7.8);
     ctx.fillStyle='#223344'; ctx.font=`${sm-1}px monospace`;
-    ctx.fillText(`${next.mapW}×${next.mapH}  ·  ${next.legos} LEGOS  ·  ${next.cats} CATS  ·  ${next.dogs} DOGS`,W/2,H/2+sm*8.4);
+    ctx.fillText(`${next.mapW}×${next.mapH}  ·  ${next.legos} LEGOS  ·  ${next.cats} CATS  ·  ${next.dogs} DOGS`,W/2,H/2+sm*9.4);
   }
   if(Math.floor(frame/22)%2===0){
     ctx.fillStyle='#ffffff'; ctx.font=`bold ${sm+2}px monospace`;
-    ctx.fillText('PRESS SPACE TO CONTINUE',W/2,H/2+sm*10.5);
+    ctx.fillText('PRESS SPACE TO CONTINUE',W/2,H/2+sm*11.5);
   }
   drawMuteButton();
   drawCRT();
@@ -1443,20 +1463,21 @@ function drawWin() {
   ctx.fillText('THE HOUSE IS CLEAN!!',W/2,H/2-big*1.5);
   ctx.restore();
   ctx.fillStyle='#00ffcc'; ctx.font=`${sm+1}px monospace`;
-  ctx.fillText('All 5 rooms. The family wakes to a spotless floor.',W/2,H/2);
+  ctx.fillText('All 3 rooms. The family wakes to a spotless floor.',W/2,H/2);
   ctx.strokeStyle='rgba(255,215,0,0.15)'; ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(W/2-200,H/2+sm*1.6);ctx.lineTo(W/2+200,H/2+sm*1.6);ctx.stroke();
+  const finalTotal=carryScore+score;
   ctx.fillStyle='#556677'; ctx.font=`${sm}px monospace`;
-  ctx.fillText(`FINAL SCORE: ${score.toLocaleString()}`,W/2,H/2+sm*2.8);
+  ctx.fillText(`FINAL SCORE: ${finalTotal.toLocaleString()}`,W/2,H/2+sm*2.8);
   ctx.fillStyle='#ffd700'; ctx.font=`${sm}px monospace`;
   ctx.fillText(`BEST SCORE: ${highScore.toLocaleString()}`,W/2,H/2+sm*4.5);
-  if(score>=highScore&&score>0){
+  if(finalTotal>=highScore&&finalTotal>0){
     ctx.fillStyle=frame%30<15?'#ffd700':'#fff'; ctx.font=`bold ${sm+2}px monospace`;
     ctx.fillText('NEW ALL-TIME BEST!!',W/2,H/2+sm*6.2);
   }
   if(Math.floor(frame/22)%2===0){
     ctx.fillStyle='#fff'; ctx.font=`bold ${sm+2}px monospace`;
-    ctx.fillText('PRESS SPACE TO PLAY AGAIN',W/2,H/2+sm*(score>=highScore&&score>0?8.5:6.5));
+    ctx.fillText('PRESS SPACE TO PLAY AGAIN',W/2,H/2+sm*(finalTotal>=highScore&&finalTotal>0?8.5:6.5));
   }
   drawMuteButton();
   drawCRT();
@@ -1480,7 +1501,7 @@ function drawGameOver() {
   ctx.beginPath();ctx.moveTo(W/2-200,H/2+sm*1.6);ctx.lineTo(W/2+200,H/2+sm*1.6);ctx.stroke();
   const pct=dirtyTotal>0?Math.floor((dirtyClean/dirtyTotal)*100):0;
   ctx.fillStyle='#667788'; ctx.font=`${sm}px monospace`;
-  ctx.fillText(`LVL ${currentLevel+1}: ${LEVELS[currentLevel].name}  ·  ${pct}% CLEANED  ·  ${score.toLocaleString()} PTS`,W/2,H/2+sm*2.8);
+  ctx.fillText(`LVL ${currentLevel+1}: ${LEVELS[currentLevel].name}  ·  ${pct}% CLEANED  ·  ${(carryScore+score).toLocaleString()} PTS`,W/2,H/2+sm*2.8);
   ctx.fillStyle='#ffd700'; ctx.font=`${sm}px monospace`;
   ctx.fillText(`BEST: ${highScore.toLocaleString()}`,W/2,H/2+sm*4.5);
   if(Math.floor(frame/22)%2===0){
