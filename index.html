@@ -20,9 +20,9 @@ canvas.width = W; canvas.height = H;
 
 // ── Levels ────────────────────────────────────────────────────────────────────
 const LEVELS = [
-  { mapW:900,  mapH:600,  dirt:0.52, furn:6,  legos:20,  socks:4,  cats:1, dogs:1, pups:2, bmons:2, timeS:140, name:'The Kitchen'    },
-  { mapW:1500, mapH:980,  dirt:0.50, furn:11, legos:38,  socks:7,  cats:2, dogs:2, pups:2, bmons:3, timeS:190, name:'The Living Room' },
-  { mapW:4500, mapH:2900, dirt:0.42, furn:44, legos:150, socks:20, cats:7, dogs:6, pups:5, bmons:5, timeS:440, name:'The Whole House' },
+  { mapW:900,  mapH:600,  dirt:0.52, furn:6,  legos:14,  socks:4,  cats:1, dogs:1, pups:2, bmons:2, cords:2,  timeS:140, name:'The Kitchen'    },
+  { mapW:1500, mapH:980,  dirt:0.50, furn:11, legos:26,  socks:7,  cats:2, dogs:2, pups:2, bmons:3, cords:5,  timeS:190, name:'The Living Room' },
+  { mapW:4500, mapH:2900, dirt:0.42, furn:44, legos:110, socks:20, cats:7, dogs:6, pups:5, bmons:5, cords:12, timeS:440, name:'The Whole House' },
 ];
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
@@ -140,7 +140,9 @@ function playPickup()  { beep(440,880,0.12,'square',0.25); }
 function playOwner()   { beep(60,40,1.2,'sawtooth',0.6); }
 function playCharge()  { beep(300,600,0.08,'sine',0.08); }
 function playCombo(n)  { beep(300+n*80,500+n*80,0.1,'square',0.2); }
-function playAlarm()   { beep(880,440,0.15,'square',0.4); }
+function playAlarm()      { beep(880,440,0.15,'square',0.4); }
+function playLowBattery(u){ const f=260+u*540; beep(f,f*1.4,0.09,'square',0.11+u*0.22); }
+function playCord()       { beep(95,60,0.28,'sawtooth',0.18); }
 function playStart()   { [220,330,440].forEach((f,i)=>setTimeout(()=>beep(f,f*1.5,0.1,'square',0.2),i*80)); }
 function playBabyMon() { beep(1100,700,0.12,'sine',0.18); }
 function playMenuOpen()    { beep(600,300,0.15,'sawtooth',0.2); }
@@ -157,6 +159,7 @@ let quitConfirm = false;
 let _quitBtnRect = null, _confirmYesRect = null, _confirmNoRect = null;
 let mouseX = -1, mouseY = -1;
 let highScore = parseInt(localStorage.getItem('roomba_hs') || '0');
+let levelHighScores = JSON.parse(localStorage.getItem('roomba_lhs') || '{}');
 let muteBtnX = 0;
 let lives = 3, frame = 0, timeLeft = 0, humTimer = 0;
 let score = 0, combo = 1, comboTimer = 0;
@@ -164,9 +167,14 @@ let battery = 100, noise = 0;
 let ownerWarning = false, ownerTimer = 0;
 let shakeX = 0, shakeY = 0, shakeDamp = 0;
 let activeBoost = 0, activeMega = 0, activeHush = 0;
+let cords = [];
+let cordStuckVx = 0, cordStuckVy = 0;
+let swipeOrigin = null;
 
 function saveHighScore() {
-  if (score > highScore) { highScore = score; localStorage.setItem('roomba_hs', highScore); }
+  const k=String(currentLevel);
+  if (!levelHighScores[k]||score>levelHighScores[k]) { levelHighScores[k]=score; localStorage.setItem('roomba_lhs',JSON.stringify(levelHighScores)); }
+  if (score>highScore) { highScore=score; localStorage.setItem('roomba_hs',highScore); }
 }
 
 // ── Camera ────────────────────────────────────────────────────────────────────
@@ -253,6 +261,11 @@ function getDpadLayout() {
   return { ps, cx:W-ps*2-20, cy:H-ps*2-20 };
 }
 
+function isOnDpad(tx,ty) {
+  const {ps,cx,cy}=getDpadLayout();
+  return tx>=cx-ps*2&&tx<=cx+ps*2&&ty>=cy-ps*2&&ty<=cy+ps*2;
+}
+
 function applyTouchToDpad(tx,ty) {
   const {ps,cx,cy}=getDpadLayout();
   if (tx>=cx-ps*1.5&&tx<cx-ps*0.5&&ty>=cy-ps*0.5&&ty<cy+ps*0.5) vkeys.left=true;
@@ -297,6 +310,11 @@ canvas.addEventListener('touchstart', e => {
     paused=false; playResume(); return;
   }
   vkeys.left=vkeys.right=vkeys.up=vkeys.down=false;
+  swipeOrigin=null;
+  for (const t of e.changedTouches) {
+    const [tx,ty]=getTouchPos(t);
+    if (!isOnDpad(tx,ty)) { swipeOrigin={x:tx,y:ty,id:t.identifier}; break; }
+  }
   Array.from(e.touches).forEach(t => { const [tx,ty]=getTouchPos(t); applyTouchToDpad(tx,ty); });
 },{passive:false});
 
@@ -304,11 +322,23 @@ canvas.addEventListener('touchmove', e => {
   e.preventDefault();
   if (state!=='playing'||paused) return;
   vkeys.left=vkeys.right=vkeys.up=vkeys.down=false;
-  Array.from(e.touches).forEach(t => { const [tx,ty]=getTouchPos(t); applyTouchToDpad(tx,ty); });
+  Array.from(e.touches).forEach(t => {
+    const [tx,ty]=getTouchPos(t);
+    if (swipeOrigin&&t.identifier===swipeOrigin.id) {
+      const dx=tx-swipeOrigin.x, dy=ty-swipeOrigin.y;
+      if (Math.sqrt(dx*dx+dy*dy)>22) {
+        if (Math.abs(dx)>=Math.abs(dy)) { vkeys.right=dx>0; vkeys.left=dx<0; }
+        else { vkeys.down=dy>0; vkeys.up=dy<0; }
+      }
+    } else { applyTouchToDpad(tx,ty); }
+  });
 },{passive:false});
 
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (swipeOrigin&&t.identifier===swipeOrigin.id) swipeOrigin=null;
+  }
   if (e.touches.length===0) vkeys.left=vkeys.right=vkeys.up=vkeys.down=false;
 },{passive:false});
 
@@ -345,7 +375,7 @@ function spawnFurniture(count) {
 }
 
 function spawnObstacles() {
-  legos=[]; socks=[]; cats=[]; dogs=[]; powerups=[]; babyMonitors=[];
+  legos=[]; socks=[]; cats=[]; dogs=[]; powerups=[]; babyMonitors=[]; cords=[];
   const lv=LEVELS[currentLevel];
   const used=[{x:MAP_W/2,y:MAP_H/2,d:130},{x:dock.x,y:dock.y,d:80}];
   furniture.forEach(f=>used.push({x:f.x,y:f.y,d:Math.max(f.w,f.h)/2+20}));
@@ -380,6 +410,10 @@ function spawnObstacles() {
     const x=rand(80,MAP_W-80),y=rand(80,MAP_H-80);
     if (tryPlace(x,y,used,130)) { babyMonitors.push({x,y,active:false,beepTimer:0}); used.push({x,y,d:100}); break; }
   }
+  for (let i=0;i<lv.cords;i++) for (let t=0;t<60;t++) {
+    const x=rand(60,MAP_W-60),y=rand(60,MAP_H-60);
+    if (tryPlace(x,y,used,90)) { cords.push({x,y,angle:rand(0,Math.PI*2)}); used.push({x,y,d:70}); break; }
+  }
 }
 
 function startLevel() {
@@ -398,7 +432,7 @@ function startLevel() {
   roomba.x=MAP_W/2; roomba.y=MAP_H/2;
   roomba.vx=0; roomba.vy=0; roomba.angle=0;
   roomba.stuckTimer=0; roomba.hitTimer=0; roomba.bumpX=0; roomba.bumpY=0;
-  dust=[]; popups=[]; bursts=[];
+  dust=[]; popups=[]; bursts=[]; cords=[]; cordStuckVx=0; cordStuckVy=0;
   paused=false; quitConfirm=false;
   updateCamera();
   state='playing';
@@ -478,14 +512,24 @@ function update() {
     if (comboTimer>0) { if (--comboTimer<=0) combo=1; }
   }
 
-  if (roomba.stuckTimer>0) roomba.stuckTimer--;
+  if (roomba.stuckTimer>0) {
+    roomba.stuckTimer--;
+    if (cordStuckVx||cordStuckVy) {
+      if (vx*cordStuckVx+vy*cordStuckVy<0) roomba.stuckTimer=Math.max(0,roomba.stuckTimer-3);
+      if (roomba.stuckTimer===0) { cordStuckVx=0; cordStuckVy=0; }
+    }
+  }
   if (roomba.hitTimer>0)   roomba.hitTimer--;
 
   const dDist=Math.sqrt((roomba.x-dock.x)**2+(roomba.y-dock.y)**2);
   if (dDist<50) {
     if (battery<99.5) { battery=Math.min(100,battery+0.8); if (frame%8===0) playCharge(); }
   }
-  if (battery<15&&moving&&frame%60===0) playAlarm();
+  if (battery<30&&moving) {
+    const urgency=Math.max(0,1-battery/30);
+    const interval=Math.max(12,Math.round(65-urgency*53));
+    if (frame%interval===0) playLowBattery(urgency);
+  }
 
   if (activeHush===0) { noise=Math.max(0,noise-(moving?0.018:0.18)); }
   else                { noise=Math.max(0,noise-(moving?0.08:0.28)); }
@@ -513,6 +557,17 @@ function update() {
   for (const s of socks) {
     if (circleRect(roomba.x,roomba.y,R,s.x,s.y,42,20)&&!roomba.stuckTimer) {
       roomba.stuckTimer=180; addPopup(roomba.x,roomba.y-44,'SOCK! STUCK!','#8888ff'); playSock();
+    }
+  }
+
+  // Cords
+  if (!roomba.stuckTimer) {
+    for (const c of cords) {
+      if (circleRect(roomba.x,roomba.y,R,c.x,c.y,70,18)) {
+        roomba.stuckTimer=300; cordStuckVx=vx; cordStuckVy=vy;
+        addPopup(roomba.x,roomba.y-44,'CORD SNAG! BACK OUT!','#ff8844'); playCord();
+        break;
+      }
     }
   }
 
@@ -917,6 +972,22 @@ function drawBursts() {
   });
 }
 
+function drawCords() {
+  for (const c of cords) {
+    ctx.save(); ctx.translate(c.x,c.y); ctx.rotate(c.angle);
+    ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.lineWidth=7;
+    ctx.beginPath(); ctx.moveTo(-36,2); ctx.bezierCurveTo(-20,-13,2,17,17,2); ctx.bezierCurveTo(24,-7,31,-3,36,8); ctx.stroke();
+    ctx.strokeStyle='#a34800'; ctx.lineWidth=6;
+    ctx.beginPath(); ctx.moveTo(-36,2); ctx.bezierCurveTo(-20,-13,2,17,17,2); ctx.bezierCurveTo(24,-7,31,-3,36,8); ctx.stroke();
+    ctx.strokeStyle='#e07030'; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(-36,2); ctx.bezierCurveTo(-20,-13,2,17,17,2); ctx.bezierCurveTo(24,-7,31,-3,36,8); ctx.stroke();
+    ctx.fillStyle='#6a2e00'; roundRect(31,4,14,10,2); ctx.fill();
+    ctx.fillStyle='#111'; ctx.fillRect(34,14,3,5); ctx.fillRect(39,14,3,5);
+    ctx.restore();
+  }
+}
+
 function drawRoomba() {
   if (roomba.hitTimer>0&&Math.floor(frame/4)%2===0) return;
   const bx=roomba.x+roomba.bumpX, by=roomba.y+roomba.bumpY;
@@ -974,6 +1045,25 @@ function drawDarkness() {
   }
   if (activeBoost>0) { ctx.fillStyle=`rgba(100,200,0,${0.04+Math.sin(frame*0.1)*0.02})`; ctx.fillRect(0,0,W,H); }
   if (activeMega>0)  { ctx.fillStyle=`rgba(50,150,255,${0.05+Math.sin(frame*0.1)*0.02})`; ctx.fillRect(0,0,W,H); }
+  if (battery<25) {
+    const u=1-battery/25;
+    const pulse=0.5+Math.sin(frame*(0.08+u*0.22))*0.5;
+    ctx.fillStyle=`rgba(255,55,0,${(u*0.13*pulse).toFixed(3)})`; ctx.fillRect(0,0,W,H);
+  }
+}
+
+function drawSunrise() {
+  const lv=LEVELS[currentLevel];
+  const totalTime=Math.round(lv.timeS*60*0.65);
+  const t=Math.max(0,Math.min(1,1-timeLeft/totalTime));
+  if (t<0.15) return;
+  const p=Math.max(0,(t-0.15)/0.85);
+  const skyH=60+p*180;
+  const g=ctx.createLinearGradient(0,0,0,skyH);
+  g.addColorStop(0,`rgba(255,${Math.round(120+p*90)},10,${(0.14+p*0.56).toFixed(2)})`);
+  g.addColorStop(0.4,`rgba(220,65,0,${(p*0.38).toFixed(2)})`);
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,skyH);
 }
 
 function drawPopups() {
@@ -1104,6 +1194,14 @@ function drawHUD() {
   ctx.textAlign='left';
   ctx.fillStyle='#6a9ab8'; ctx.font='bold 10px monospace';
   ctx.fillText('SCORE',panX+12,panY+16);
+  const lvBest=levelHighScores[String(currentLevel)]||0;
+  if (lvBest>0) {
+    ctx.textAlign='right'; ctx.fillStyle='#2a4455'; ctx.font='bold 9px monospace';
+    ctx.fillText('LVL BEST',panX+panW-10,panY+16);
+    ctx.fillStyle=score>=lvBest?'#ffd700':'#3a5566'; ctx.font='bold 11px monospace';
+    ctx.fillText(String(lvBest).padStart(6,'0'),panX+panW-10,panY+30);
+    ctx.textAlign='left';
+  }
   ctx.fillStyle='#ffd700'; ctx.font='bold 22px monospace';
   ctx.fillText(String(score).padStart(6,'0'),panX+12,panY+58);
   if (combo>2) {
@@ -1326,10 +1424,13 @@ function drawLevelComplete() {
   ctx.beginPath();ctx.moveTo(W/2-200,H/2+sm*1.8);ctx.lineTo(W/2+200,H/2+sm*1.8);ctx.stroke();
   ctx.fillStyle='#ffd700'; ctx.font=`bold ${sm+2}px monospace`;
   ctx.fillText(`SCORE  ${score.toLocaleString()}`,W/2,H/2+sm*3.5);
+  const lvBestLC=levelHighScores[String(currentLevel)]||0;
+  ctx.fillStyle=score>=lvBestLC&&score>0?'#ffd700':'#3a5566'; ctx.font=`${sm-1}px monospace`;
+  ctx.fillText(`LEVEL BEST: ${Math.max(score,lvBestLC).toLocaleString()}`,W/2,H/2+sm*5.0);
   if(score>=highScore&&score>0){
     ctx.fillStyle=frame%30<15?'#ffd700':'#ffffff';
     ctx.font=`bold ${sm}px monospace`;
-    ctx.fillText('NEW BEST!',W/2,H/2+sm*5.2);
+    ctx.fillText('NEW ALL-TIME BEST!',W/2,H/2+sm*6.5);
   }
   const next=LEVELS[currentLevel+1];
   if(next){
@@ -1395,11 +1496,14 @@ function drawGameOver() {
   const pct=dirtyTotal>0?Math.floor((dirtyClean/dirtyTotal)*100):0;
   ctx.fillStyle='#667788'; ctx.font=`${sm}px monospace`;
   ctx.fillText(`LVL ${currentLevel+1}: ${LEVELS[currentLevel].name}  ·  ${pct}% CLEANED  ·  ${score.toLocaleString()} PTS`,W/2,H/2+sm*2.8);
+  const lvBestGO=levelHighScores[String(currentLevel)]||0;
+  ctx.fillStyle='#3a5566'; ctx.font=`${sm-1}px monospace`;
+  ctx.fillText(`LEVEL BEST: ${lvBestGO>0?lvBestGO.toLocaleString():'--'}`,W/2,H/2+sm*4.3);
   ctx.fillStyle='#ffd700'; ctx.font=`${sm}px monospace`;
-  ctx.fillText(`BEST: ${highScore.toLocaleString()}`,W/2,H/2+sm*4.5);
+  ctx.fillText(`ALL-TIME BEST: ${highScore.toLocaleString()}`,W/2,H/2+sm*5.8);
   if(Math.floor(frame/22)%2===0){
     ctx.fillStyle='#ffffff'; ctx.font=`bold ${sm+2}px monospace`;
-    ctx.fillText('PRESS SPACE TO RETRY',W/2,H/2+sm*6.5);
+    ctx.fillText('PRESS SPACE TO RETRY',W/2,H/2+sm*7.5);
   }
   drawMuteButton();
   drawCRT();
@@ -1493,10 +1597,12 @@ function draw() {
   drawCats();
   drawDogs();
   drawBabyMonitors();
+  drawCords();
   drawBursts();
   drawRoomba();
   ctx.restore();
   drawDarkness();
+  drawSunrise();
   drawPopups();
   drawMinimap();
   ctx.restore();
