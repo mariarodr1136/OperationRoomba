@@ -1,4 +1,4 @@
-# Operation Roomba 🤖
+# Operation Roomba: Stealth Cleaning Game 🤖
 
 ![HTML5](https://img.shields.io/badge/HTML5-Canvas-orange) ![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-yellow) ![Web Audio API](https://img.shields.io/badge/Web%20Audio-API-blue) ![No Dependencies](https://img.shields.io/badge/Dependencies-None-brightgreen) ![Render](https://img.shields.io/badge/Deploy-Render-46E3B7)
 
@@ -12,7 +12,11 @@ Live Application: https://operation-roomba.onrender.com
 
 ---
 
-https://github.com/user-attachments/assets/INSERT_VIDEO_ASSET_ID_HERE
+
+
+https://github.com/user-attachments/assets/5f22f7eb-d4c7-4907-94de-9099ac3b073d
+
+
 
 ---
 
