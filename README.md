@@ -12,10 +12,7 @@ Live Application: https://operation-roomba.onrender.com
 
 ---
 
-
-
-https://github.com/user-attachments/assets/5f22f7eb-d4c7-4907-94de-9099ac3b073d
-
+https://github.com/user-attachments/assets/295861de-a92d-4b6c-83cc-78e95d9b7706
 
 
 ---
